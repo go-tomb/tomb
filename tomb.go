@@ -98,7 +98,7 @@ func (t *Tomb) Wait() os.Error {
 	return t.reason
 }
 
-// Done puts the goroutine in a dead state, and should be called a
+// Done informs that the goroutine in a dead state, and should be called a
 // single time right before the goroutine function or method returns.
 // If the goroutine was not already in a dying state before Done is
 // called, it will flagged as dying and dead at once.
@@ -107,7 +107,7 @@ func (t *Tomb) Done() {
 	close(t.Dead)
 }
 
-// Fatal puts the goroutine in a dying state.
+// Fatal informs that the goroutine in a dying state.
 // The first non-nil reason parameter to Fatal or the first Fatalf-generated
 // error is recorded as the reason for the goroutine death.
 // This method may be safely called concurrently, and may be called both from
