@@ -88,7 +88,7 @@ func (t *Tomb) IsDead() bool {
 }
 
 // Wait blocks until the goroutine is in a dead state and returns the
-// reason for its death (potentially nil).
+// reason for its death. The reason may be nil.
 func (t *Tomb) Wait() os.Error {
 	<-t.Dead
 	return t.reason
@@ -96,6 +96,8 @@ func (t *Tomb) Wait() os.Error {
 
 // Done puts the goroutine in a dead state, and should be called a
 // single time right before the goroutine function or method returns.
+// If the goroutine was not already in a dying state before Done is
+// called, it will flagged as dying and dead at once.
 func (t *Tomb) Done() {
 	t.Fatal(nil)
 	close(t.Dead)
@@ -104,6 +106,8 @@ func (t *Tomb) Done() {
 // Fatal puts the goroutine in a dying state.
 // The first non-nil reason parameter to Fatal or the first Fatalf-generated
 // error is recorded as the reason for the goroutine death.
+// This method may be safely called concurrently, and may be called both from
+// within the goroutine and/or from outside to request the goroutine termination.
 func (t *Tomb) Fatal(reason os.Error) {
 	t.m.Lock()
 	if t.reason == nil {
@@ -117,18 +121,15 @@ func (t *Tomb) Fatal(reason os.Error) {
 	t.m.Unlock()
 }
 
-// Fatalf puts the goroutine in a dying state.
-// The first non-nil reason parameter to Fatal or the first Fatalf-generated
-// error is recorded as the reason for the goroutine death.
+// Fatalf works like Fatal, but builds the reason providing the received
+// arguments to fmt.Errorf. The generated error is also returned.
 func (t *Tomb) Fatalf(format string, args ...interface{}) os.Error {
 	err := fmt.Errorf(format, args...)
 	t.Fatal(err)
 	return err
 }
 
-// Err returns the reason for the goroutine death.
-// The reason is nil if Fatalf wasn't called and Fatal was not called
-// or was only called with a nil argument.
+// Err returns the reason for the goroutine death provided via Fatal or Fatalf.
 func (t *Tomb) Err() (reason os.Error) {
 	t.m.Lock()
 	reason = t.reason
