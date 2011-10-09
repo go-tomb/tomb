@@ -26,7 +26,7 @@
 // NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// The tomb package supports clean goroutine termination.
+// The tomb package helps with clean goroutine termination.
 //
 // See the Tomb type for details.
 package tomb
