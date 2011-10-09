@@ -54,6 +54,10 @@ type nothing struct{}
 // explicit blocking until the state changes, and also to selectively
 // unblock select statements accordingly.
 //
+// For background and a detailed example, see the following blog post:
+//
+//   http://blog.labix.org/2011/10/09/death-of-goroutines-under-control
+//
 type Tomb struct {
 	m      sync.Mutex
 	Dying  chan nothing
