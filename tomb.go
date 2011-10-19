@@ -37,8 +37,6 @@ import (
 	"sync"
 )
 
-type nothing struct{}
-
 // A Tomb tracks the lifecycle of a goroutine as alive, dying or dead,
 // and the reason for its death.
 //
@@ -60,15 +58,15 @@ type nothing struct{}
 //
 type Tomb struct {
 	m      sync.Mutex
-	Dying  chan nothing
-	Dead   chan nothing
+	Dying  chan struct{}
+	Dead   chan struct{}
 	reason os.Error
 }
 
 // New creates a new Tomb to track the lifecycle of a goroutine
 // that is already alive or about to be created.
 func New() *Tomb {
-	return &Tomb{Dying: make(chan nothing), Dead: make(chan nothing)}
+	return &Tomb{Dying: make(chan struct{}), Dead: make(chan struct{})}
 }
 
 // IsDying returns true if the goroutine is in a dying or already dead state.
