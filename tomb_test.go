@@ -11,17 +11,18 @@ func TestNewTomb(t *testing.T) {
 	testState(t, tb, false, false, nil)
 
 	tb.Done()
-	testState(t, tb, true, true, nil)
+	testState(t, tb, true, true, tomb.Stop)
 }
 
 func TestFatal(t *testing.T) {
 	tb := tomb.New()
 
-	// a nil reason still puts it in dying mode
-	tb.Fatal(nil)
-	testState(t, tb, true, false, nil)
+	// the Stop reason flags the goroutine as dying
+	tb = tomb.New()
+	tb.Fatal(tomb.Stop)
+	testState(t, tb, true, false, tomb.Stop)
 
-	// a non-nil reason now will override the nil reason
+	// a non-Stop reason now will override Stop
 	err := os.NewError("some error")
 	tb.Fatal(err)
 	testState(t, tb, true, false, err)
@@ -41,7 +42,7 @@ func TestFatalf(t *testing.T) {
 	tb.Fatalf("BO%s", "OM")
 	testState(t, tb, true, false, err)
 
-	// another non-nil reason won't replace the first one
+	// another non-Stop reason won't replace the first one
 	tb.Fatalf("ignore me")
 	testState(t, tb, true, false, err)
 
@@ -50,12 +51,6 @@ func TestFatalf(t *testing.T) {
 }
 
 func testState(t *testing.T, tb *tomb.Tomb, wantDying, wantDead bool, wantErr os.Error) {
-	if tb.IsDying() != wantDying {
-		t.Errorf("IsDying: want %v, got %v", wantDying, !wantDying)
-	}
-	if tb.IsDead() != wantDead {
-		t.Errorf("IsDead: want %v, got %v", wantDead, !wantDead)
-	}
 	select {
 	case <-tb.Dying:
 		if !wantDying {
@@ -66,11 +61,13 @@ func testState(t *testing.T, tb *tomb.Tomb, wantDying, wantDead bool, wantErr os
 			t.Error("<-Dying: should not block")
 		}
 	}
+	seemsDead := false
 	select {
 	case <-tb.Dead:
 		if !wantDead {
 			t.Error("<-Dead: should block")
 		}
+		seemsDead = true
 	default:
 		if wantDead {
 			t.Error("<-Dead: should not block")
@@ -78,5 +75,15 @@ func testState(t *testing.T, tb *tomb.Tomb, wantDying, wantDead bool, wantErr os
 	}
 	if err := tb.Err(); err != wantErr {
 		t.Errorf("Err: want %#v, got %#v", wantErr, err)
+	}
+	if wantDead && seemsDead {
+		waitErr := tb.Wait()
+		if wantErr == tomb.Stop {
+			if waitErr != nil {
+				t.Errorf("Wait: want nil, got %#v", waitErr)
+			}
+		} else if waitErr != wantErr {
+			t.Errorf("Wait: want %#v, got %#v", wantErr)
+		}
 	}
 }

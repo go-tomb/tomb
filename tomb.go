@@ -40,7 +40,7 @@ import (
 // A Tomb tracks the lifecycle of a goroutine as alive, dying or dead,
 // and the reason for its death.
 //
-// The clean state of a Tomb informs that a goroutine is about to be
+// The initial state of a Tomb informs that a goroutine is about to be
 // created or already alive. Once Fatal or Fatalf is called with an
 // argument that informs the reason for death, the goroutine is in
 // a dying state and is expected to terminate soon. Right before the
@@ -58,67 +58,61 @@ import (
 //
 type Tomb struct {
 	m      sync.Mutex
-	Dying  chan struct{}
-	Dead   chan struct{}
+	dying  chan struct{}
+	dead   chan struct{}
+	Dying  <-chan struct{}
+	Dead   <-chan struct{}
 	reason os.Error
 }
+
+// The Stop error is used as a reason for a goroutine to stop cleanly.
+var Stop = os.NewError("clean stop")
 
 // New creates a new Tomb to track the lifecycle of a goroutine
 // that is already alive or about to be created.
 func New() *Tomb {
-	return &Tomb{Dying: make(chan struct{}), Dead: make(chan struct{})}
-}
-
-// IsDying returns true if the goroutine is in a dying or already dead state.
-func (t *Tomb) IsDying() bool {
-	select {
-	case <-t.Dying:
-		return true
-	default:
-	}
-	return false
-}
-
-// IsDead returns true if the goroutine is in a dead state.
-func (t *Tomb) IsDead() bool {
-	select {
-	case <-t.Dead:
-		return true
-	default:
-	}
-	return false
+	t := &Tomb{dying: make(chan struct{}), dead: make(chan struct{})}
+	t.Dying = t.dying
+	t.Dead = t.dead
+	return t
 }
 
 // Wait blocks until the goroutine is in a dead state and returns the
-// reason for its death. The reason may be nil.
+// reason for its death. If the reason is Stop, nil is returned.
 func (t *Tomb) Wait() os.Error {
 	<-t.Dead
+	if t.reason == Stop {
+		return nil
+	}
 	return t.reason
 }
 
 // Done flags the goroutine as dead, and should be called a single time
 // right before the goroutine function or method returns.
 // If the goroutine was not already in a dying state before Done is
-// called, it will flagged as dying and dead at once.
+// called, it will flagged as dying and dead at once with Stop as the
+// reason for death.
 func (t *Tomb) Done() {
-	t.Fatal(nil)
-	close(t.Dead)
+	t.Fatal(Stop)
+	close(t.dead)
 }
 
-// Fatal flags the goroutine as dying.
-// The first non-nil reason parameter to Fatal or the first Fatalf-generated
-// error is recorded as the reason for the goroutine death.
-// This method may be safely called concurrently, and may be called both from
-// within the goroutine and/or from outside to request the goroutine termination.
+// Fatal flags the goroutine as dying for the given reason.
+// Fatal may be called multiple times, but only the first error is
+// recorded as the reason for termination. If no errors are found,
+// the reason for termination is Stop.
 func (t *Tomb) Fatal(reason os.Error) {
+	if reason == nil {
+		panic("Fatal with nil reason")
+	}
 	t.m.Lock()
-	if t.reason == nil {
+	if t.reason == nil || t.reason == Stop {
 		t.reason = reason
 	}
 	select {
 	case <-t.Dying:
 	default:
-		close(t.Dying)
+		close(t.dying)
 	}
 	t.m.Unlock()
 }
@@ -131,7 +125,11 @@ func (t *Tomb) Fatalf(format string, args ...interface{}) os.Error {
 	return err
 }
 
-// Err returns the reason for the goroutine death provided via Fatal or Fatalf.
+// Err returns the reason for the goroutine death provided via Fatal
+// or Fatalf. If no actual error was provided to Fatal or Fatalf, the
+// reason will be Stop.
+// The result is guaranteed not to be nil if the Tomb is flagging to
+// goroutine as dying or dead.
 func (t *Tomb) Err() (reason os.Error) {
 	t.m.Lock()
 	reason = t.reason
