@@ -126,10 +126,7 @@ func (t *Tomb) Fatalf(format string, args ...interface{}) os.Error {
 }
 
 // Err returns the reason for the goroutine death provided via Fatal
-// or Fatalf. If no actual error was provided to Fatal or Fatalf, the
-// reason will be Stop.
-// The result is guaranteed not to be nil if the Tomb is flagging to
-// goroutine as dying or dead.
+// or Fatalf, or nil in case the goroutine is still alive.
 func (t *Tomb) Err() (reason os.Error) {
 	t.m.Lock()
 	reason = t.reason
