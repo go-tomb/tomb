@@ -90,8 +90,8 @@ func (t *Tomb) Wait() os.Error {
 // Done flags the goroutine as dead, and should be called a single time
 // right before the goroutine function or method returns.
 // If the goroutine was not already in a dying state before Done is
-// called, it will flagged as dying and dead at once with Stop as the
-// reason for death.
+// called, it will be flagged as dying and dead at once with Stop as
+// the reason for death.
 func (t *Tomb) Done() {
 	t.Fatal(Stop)
 	close(t.dead)
