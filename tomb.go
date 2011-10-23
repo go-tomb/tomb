@@ -99,8 +99,8 @@ func (t *Tomb) Done() {
 
 // Fatal flags the goroutine as dying for the given reason.
 // Fatal may be called multiple times, but only the first error is
-// recorded as the reason for termination. If no errors are found,
-// the reason for termination is Stop.
+// recorded as the reason for termination.
+// The Stop value may be used to terminate a goroutine cleanly.
 func (t *Tomb) Fatal(reason os.Error) {
 	if reason == nil {
 		panic("Fatal with nil reason")
