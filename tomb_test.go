@@ -1,8 +1,10 @@
 package tomb_test
 
 import (
+	"errors"
 	"launchpad.net/tomb"
-	"os"
+	"reflect"
+
 	"testing"
 )
 
@@ -23,12 +25,12 @@ func TestFatal(t *testing.T) {
 	testState(t, tb, true, false, tomb.Stop)
 
 	// a non-Stop reason now will override Stop
-	err := os.NewError("some error")
+	err := errors.New("some error")
 	tb.Fatal(err)
 	testState(t, tb, true, false, err)
 
 	// another non-nil reason won't replace the first one
-	tb.Fatal(os.NewError("ignore me"))
+	tb.Fatal(errors.New("ignore me"))
 	testState(t, tb, true, false, err)
 
 	tb.Done()
@@ -38,7 +40,7 @@ func TestFatal(t *testing.T) {
 func TestFatalf(t *testing.T) {
 	tb := tomb.New()
 
-	err := os.NewError("BOOM")
+	err := errors.New("BOOM")
 	tb.Fatalf("BO%s", "OM")
 	testState(t, tb, true, false, err)
 
@@ -50,7 +52,7 @@ func TestFatalf(t *testing.T) {
 	testState(t, tb, true, true, err)
 }
 
-func testState(t *testing.T, tb *tomb.Tomb, wantDying, wantDead bool, wantErr os.Error) {
+func testState(t *testing.T, tb *tomb.Tomb, wantDying, wantDead bool, wantErr error) {
 	select {
 	case <-tb.Dying:
 		if !wantDying {
@@ -73,7 +75,7 @@ func testState(t *testing.T, tb *tomb.Tomb, wantDying, wantDead bool, wantErr os
 			t.Error("<-Dead: should not block")
 		}
 	}
-	if err := tb.Err(); err != wantErr {
+	if err := tb.Err(); !reflect.DeepEqual(err, wantErr) {
 		t.Errorf("Err: want %#v, got %#v", wantErr, err)
 	}
 	if wantDead && seemsDead {
@@ -82,8 +84,8 @@ func testState(t *testing.T, tb *tomb.Tomb, wantDying, wantDead bool, wantErr os
 			if waitErr != nil {
 				t.Errorf("Wait: want nil, got %#v", waitErr)
 			}
-		} else if waitErr != wantErr {
-			t.Errorf("Wait: want %#v, got %#v", wantErr)
+		} else if !reflect.DeepEqual(waitErr, wantErr) {
+			t.Errorf("Wait: want %#v, got %#v", wantErr, waitErr)
 		}
 	}
 }

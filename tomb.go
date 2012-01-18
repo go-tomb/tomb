@@ -32,8 +32,9 @@
 package tomb
 
 import (
+	"errors"
 	"fmt"
-	"os"
+
 	"sync"
 )
 
@@ -62,11 +63,11 @@ type Tomb struct {
 	dead   chan struct{}
 	Dying  <-chan struct{}
 	Dead   <-chan struct{}
-	reason os.Error
+	reason error
 }
 
 // The Stop error is used as a reason for a goroutine to stop cleanly.
-var Stop = os.NewError("clean stop")
+var Stop = errors.New("clean stop")
 
 // New creates a new Tomb to track the lifecycle of a goroutine
 // that is already alive or about to be created.
@@ -79,7 +80,7 @@ func New() *Tomb {
 
 // Wait blocks until the goroutine is in a dead state and returns the
 // reason for its death. If the reason is Stop, nil is returned.
-func (t *Tomb) Wait() os.Error {
+func (t *Tomb) Wait() error {
 	<-t.Dead
 	if t.reason == Stop {
 		return nil
@@ -101,7 +102,7 @@ func (t *Tomb) Done() {
 // Fatal may be called multiple times, but only the first error is
 // recorded as the reason for termination.
 // The Stop value may be used to terminate a goroutine cleanly.
-func (t *Tomb) Fatal(reason os.Error) {
+func (t *Tomb) Fatal(reason error) {
 	if reason == nil {
 		panic("Fatal with nil reason")
 	}
@@ -119,7 +120,7 @@ func (t *Tomb) Fatal(reason os.Error) {
 
 // Fatalf works like Fatal, but builds the reason providing the received
 // arguments to fmt.Errorf. The generated error is also returned.
-func (t *Tomb) Fatalf(format string, args ...interface{}) os.Error {
+func (t *Tomb) Fatalf(format string, args ...interface{}) error {
 	err := fmt.Errorf(format, args...)
 	t.Fatal(err)
 	return err
@@ -127,7 +128,7 @@ func (t *Tomb) Fatalf(format string, args ...interface{}) os.Error {
 
 // Err returns the reason for the goroutine death provided via Fatal
 // or Fatalf, or nil in case the goroutine is still alive.
-func (t *Tomb) Err() (reason os.Error) {
+func (t *Tomb) Err() (reason error) {
 	t.m.Lock()
 	reason = t.reason
 	t.m.Unlock()
