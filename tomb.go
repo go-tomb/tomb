@@ -40,7 +40,7 @@ import (
 // A Tomb tracks the lifecycle of a goroutine as alive, dying or dead,
 // and the reason for its death.
 //
-// The zero value of a Tomb informs that a goroutine is about to be
+// The zero value of a Tomb assumes that a goroutine is about to be
 // created or already alive. Once Stop is called with an
 // argument that informs the reason for death, the goroutine is in
 // a dying state and is expected to terminate soon. Right before the
@@ -58,13 +58,14 @@ import (
 //
 type Tomb struct {
 	m      sync.Mutex
-	state state
+	state  state
 	dying  chan struct{}
 	dead   chan struct{}
 	reason error
 }
 
 type state int
+
 const (
 	uninitialized = state(iota)
 	running
