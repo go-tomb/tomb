@@ -41,7 +41,7 @@ import (
 // and the reason for its death.
 //
 // The zero value of a Tomb assumes that a goroutine is about to be
-// created or already alive. Once Kill is called with an
+// created or already alive. Once Kill or Killf is called with an
 // argument that informs the reason for death, the goroutine is in
 // a dying state and is expected to terminate soon. Right before the
 // goroutine function or method returns, Done must be called to inform
