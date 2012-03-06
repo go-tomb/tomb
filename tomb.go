@@ -58,29 +58,19 @@ import (
 //
 type Tomb struct {
 	m      sync.Mutex
-	state  state
 	dying  chan struct{}
 	dead   chan struct{}
 	reason error
 }
 
-type state int
-
-const (
-	uninitialized = state(iota)
-	running
-	dying
-)
-
-var errCleanKill = errors.New("clean kill")
 var ErrStillRunning = errors.New("tomb: goroutine is still running")
 
 func (t *Tomb) init() {
 	t.m.Lock()
-	if t.state == uninitialized {
+	if t.dead == nil {
 		t.dead = make(chan struct{})
 		t.dying = make(chan struct{})
-		t.state = running
+		t.reason = ErrStillRunning
 	}
 	t.m.Unlock()
 }
@@ -104,9 +94,6 @@ func (t *Tomb) Dying() <-chan struct{} {
 func (t *Tomb) Wait() error {
 	t.init()
 	<-t.dead
-	if t.reason == errCleanKill {
-		return nil
-	}
 	return t.reason
 }
 
@@ -126,16 +113,17 @@ func (t *Tomb) Done() {
 // recorded as the reason for termination.
 func (t *Tomb) Kill(reason error) {
 	t.init()
-	if reason == nil {
-		reason = errCleanKill
-	}
 	t.m.Lock()
-	if t.reason == nil || t.reason == errCleanKill {
+	if t.reason == nil || t.reason == ErrStillRunning {
 		t.reason = reason
 	}
-	if t.state == running {
+	// If the receive on t.dying succeeds, then
+	// it can only be because we have already closed it.
+	// If it blocks, then we know that it needs to be closed.
+	select {
+	case <-t.dying:
+	default:
 		close(t.dying)
-		t.state = dying
 	}
 	t.m.Unlock()
 }
@@ -153,12 +141,7 @@ func (t *Tomb) Killf(f string, a ...interface{}) error {
 func (t *Tomb) Err() (reason error) {
 	t.init()
 	t.m.Lock()
-	defer t.m.Unlock()
-	switch {
-	case t.state == running:
-		return ErrStillRunning
-	case t.reason == errCleanKill:
-		return nil
-	}
-	return t.reason
+	reason = t.reason
+	t.m.Unlock()
+	return
 }
