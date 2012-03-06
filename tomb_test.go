@@ -41,7 +41,7 @@ func TestKillf(t *testing.T) {
 	tb.Killf("BO%s", "OM")
 	testState(t, tb, true, false, err)
 
-	// another non-Stop reason won't replace the first one
+	// another non-nil reason won't replace the first one
 	tb.Killf("ignore me")
 	testState(t, tb, true, false, err)
 

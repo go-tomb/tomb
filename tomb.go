@@ -41,7 +41,7 @@ import (
 // and the reason for its death.
 //
 // The zero value of a Tomb assumes that a goroutine is about to be
-// created or already alive. Once Stop is called with an
+// created or already alive. Once Kill is called with an
 // argument that informs the reason for death, the goroutine is in
 // a dying state and is expected to terminate soon. Right before the
 // goroutine function or method returns, Done must be called to inform
@@ -72,7 +72,7 @@ const (
 	dying
 )
 
-var errCleanStop = errors.New("clean stop")
+var errCleanKill = errors.New("clean kill")
 var ErrStillRunning = errors.New("tomb: goroutine is still running")
 
 func (t *Tomb) init() {
@@ -104,7 +104,7 @@ func (t *Tomb) Dying() <-chan struct{} {
 func (t *Tomb) Wait() error {
 	t.init()
 	<-t.dead
-	if t.reason == errCleanStop {
+	if t.reason == errCleanKill {
 		return nil
 	}
 	return t.reason
@@ -127,10 +127,10 @@ func (t *Tomb) Done() {
 func (t *Tomb) Kill(reason error) {
 	t.init()
 	if reason == nil {
-		reason = errCleanStop
+		reason = errCleanKill
 	}
 	t.m.Lock()
-	if t.reason == nil || t.reason == errCleanStop {
+	if t.reason == nil || t.reason == errCleanKill {
 		t.reason = reason
 	}
 	if t.state == running {
@@ -148,8 +148,8 @@ func (t *Tomb) Killf(f string, a ...interface{}) error {
 	return err
 }
 
-// Err returns the reason for the goroutine death provided via Stop
-// or Fatalf, or ErrStillRunning when the goroutine is still alive.
+// Err returns the reason for the goroutine death provided via Kill
+// or Killf, or ErrStillRunning when the goroutine is still alive.
 func (t *Tomb) Err() (reason error) {
 	t.init()
 	t.m.Lock()
@@ -157,7 +157,7 @@ func (t *Tomb) Err() (reason error) {
 	switch {
 	case t.state == running:
 		return ErrStillRunning
-	case t.reason == errCleanStop:
+	case t.reason == errCleanKill:
 		return nil
 	}
 	return t.reason
