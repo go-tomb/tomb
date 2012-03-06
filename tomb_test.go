@@ -16,12 +16,12 @@ func TestNewTomb(t *testing.T) {
 }
 
 func TestKill(t *testing.T) {
-	// the Kill reason flags the goroutine as dying
+	// a nil reason flags the goroutine as dying
 	tb := new(tomb.Tomb)
 	tb.Kill(nil)
 	testState(t, tb, true, false, nil)
 
-	// a non-Kill reason now will override Kill
+	// a non-nil reason now will override Kill
 	err := errors.New("some error")
 	tb.Kill(err)
 	testState(t, tb, true, false, err)

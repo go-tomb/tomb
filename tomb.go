@@ -103,7 +103,6 @@ func (t *Tomb) Wait() error {
 // called, it will be flagged as dying and dead at once with no
 // error.
 func (t *Tomb) Done() {
-	t.init()
 	t.Kill(nil)
 	close(t.dead)
 }
