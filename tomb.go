@@ -126,10 +126,9 @@ func (t *Tomb) Done() {
 func (t *Tomb) Kill(reason error) {
 	t.init()
 	t.m.Lock()
+	defer t.m.Unlock()
 	if reason == ErrDying {
-		alive := t.reason == ErrStillAlive
-		t.m.Unlock()
-		if alive {
+		if t.reason == ErrStillAlive {
 			panic("tomb: Kill with ErrDying while still alive")
 		}
 		return
@@ -145,7 +144,6 @@ func (t *Tomb) Kill(reason error) {
 	default:
 		close(t.dying)
 	}
-	t.m.Unlock()
 }
 
 // Killf works like Kill, but builds the reason providing the received
