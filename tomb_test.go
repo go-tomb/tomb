@@ -64,7 +64,7 @@ func TestErrDying(t *testing.T) {
 	tb.Kill(tomb.ErrDying)
 	testState(t, tb, true, false, err)
 
-	// ErrDying being use badly, with an alive tomb.
+	// ErrDying being used badly, with an alive tomb.
 	tb = &tomb.Tomb{}
 	defer func() {
 		err := recover()
