@@ -52,6 +52,12 @@ import (
 // explicit blocking until the state changes, and also to selectively
 // unblock select statements accordingly.
 //
+// When the tomb state changes to dying and there's still logic going
+// on within the goroutine, nested functions and methos may choose to
+// return ErrDying as their error value, as this error won't alter the
+// tomb state if provied to the Kill method. This is a convenient way to
+// follow standard Go practices in the context of a dying tomb.
+//
 // For background and a detailed example, see the following blog post:
 //
 //   http://blog.labix.org/2011/10/09/death-of-goroutines-under-control
@@ -63,14 +69,17 @@ type Tomb struct {
 	reason error
 }
 
-var ErrStillRunning = errors.New("tomb: goroutine is still running")
+var (
+	ErrStillAlive = errors.New("tomb: still alive")
+	ErrDying = errors.New("tomb: dying")
+)
 
 func (t *Tomb) init() {
 	t.m.Lock()
 	if t.dead == nil {
 		t.dead = make(chan struct{})
 		t.dying = make(chan struct{})
-		t.reason = ErrStillRunning
+		t.reason = ErrStillAlive
 	}
 	t.m.Unlock()
 }
@@ -108,12 +117,23 @@ func (t *Tomb) Done() {
 }
 
 // Kill flags the goroutine as dying for the given reason.
-// Kill may be called multiple times, but only the first non-nil error is
-// recorded as the reason for termination.
+// Kill may be called multiple times, but only the first
+// non-nil error is recorded as the reason for termination.
+//
+// If reason is ErrDying, the previous reason isn't replaced
+// even if it is nil. It's a runtime error to call Kill with
+// ErrDying if t is not in a dying state.
 func (t *Tomb) Kill(reason error) {
 	t.init()
 	t.m.Lock()
-	if t.reason == nil || t.reason == ErrStillRunning {
+	defer t.m.Unlock()
+	if reason == ErrDying {
+		if t.reason == ErrStillAlive {
+			panic("tomb: Kill with ErrDying while still alive")
+		}
+		return
+	}
+	if t.reason == nil || t.reason == ErrStillAlive {
 		t.reason = reason
 	}
 	// If the receive on t.dying succeeds, then
@@ -124,7 +144,6 @@ func (t *Tomb) Kill(reason error) {
 	default:
 		close(t.dying)
 	}
-	t.m.Unlock()
 }
 
 // Killf works like Kill, but builds the reason providing the received
@@ -136,7 +155,7 @@ func (t *Tomb) Killf(f string, a ...interface{}) error {
 }
 
 // Err returns the reason for the goroutine death provided via Kill
-// or Killf, or ErrStillRunning when the goroutine is still alive.
+// or Killf, or ErrStillAlive when the goroutine is still alive.
 func (t *Tomb) Err() (reason error) {
 	t.init()
 	t.m.Lock()
