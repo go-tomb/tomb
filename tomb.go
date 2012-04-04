@@ -62,6 +62,11 @@ import (
 //
 //   http://blog.labix.org/2011/10/09/death-of-goroutines-under-control
 //
+// For a more complex code snippet demonstrating the use of multiple
+// goroutines with a single Tomb, see:
+//
+//   http://play.golang.org/p/Xh7qWsDPZP
+//
 type Tomb struct {
 	m      sync.Mutex
 	dying  chan struct{}
