@@ -108,7 +108,10 @@ func (t *Tomb) Dying() <-chan struct{} {
 func (t *Tomb) Wait() error {
 	t.init()
 	<-t.dead
-	return t.reason
+	t.m.Lock()
+	reason := t.reason
+	t.m.Unlock()
+	return reason
 }
 
 // Done flags the goroutine as dead, and should be called a single time
