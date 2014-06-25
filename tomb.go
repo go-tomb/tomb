@@ -26,28 +26,40 @@
 // NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// The tomb package offers a conventional API for clean goroutine termination.
+// The tomb package handles clean goroutine tracking and termination.
 //
-// A Tomb tracks the lifecycle of a goroutine as alive, dying or dead,
-// and the reason for its death.
+// A Tomb value tracks the lifecycle of one or more goroutines as alive,
+// dying or dead, and the reason for their death.
 //
-// The zero value of a Tomb assumes that a goroutine is about to be
-// created or already alive. Once Kill or Killf is called with an
-// argument that informs the reason for death, the goroutine is in
-// a dying state and is expected to terminate soon. Right before the
-// goroutine function or method returns, Done must be called to inform
-// that the goroutine is indeed dead and about to stop running.
+// The zero value of a Tomb is ready to handle the creation of one
+// or more tracked goroutines via its Go method, and these goroutines
+// may call the Go method again to create additional tracked goroutines
+// at any point in their execution.
+// 
+// If any of the tracked goroutines returns a non-nil error, or the
+// Kill or Killf method is called by any goroutine in the system (tracked
+// or not), the tomb Err is set, Alive is set to false, and the Dying
+// channel is closed to flag that all tracked goroutines are supposed
+// to willingly terminate as soon as possible.
 //
-// A Tomb exposes Dying and Dead channels. These channels are closed
-// when the Tomb state changes in the respective way. They enable
-// explicit blocking until the state changes, and also to selectively
-// unblock select statements accordingly.
+// Once all tracked goroutines terminate, the Dead channel is closed,
+// and Wait unblocks and returns the first non-nil error presented
+// to the tomb via a result or an explicit Kill or Killf method call,
+// or nil if there were no errors.
 //
-// When the tomb state changes to dying and there's still logic going
-// on within the goroutine, nested functions and methods may choose to
-// return ErrDying as their error value, as this error won't alter the
-// tomb state if provied to the Kill method. This is a convenient way to
-// follow standard Go practices in the context of a dying tomb.
+// Tracked functions and methods that are still running while the tomb
+// is in dying mode may choose to return ErrDying as their error value.
+// This preserves the well established non-nil error convention, but is
+// understood by the tomb as a clean termination. The Err and Wait
+// methods will still return nil if all observed errors were either
+// nil or ErrDying.
+//
+// All tomb methods are concurrency-safe. The main non-obvious race
+// to be aware about is that calling the Go method twice on a new
+// tomb value may lead the second goroutine to never run if the
+// first one returns too early and puts the tomb into dead mode.
+// If unintended, avoiding this behavior by providing both goroutine
+// functions to the same Go method call.
 //
 // For background and a detailed example, see the following blog post:
 //
@@ -66,12 +78,13 @@ import (
 	"sync"
 )
 
-// A Tomb tracks the lifecycle of a goroutine as alive, dying or dead,
-// and the reason for its death.
+// A Tomb tracks the lifecycle of one or more goroutines as alive,
+// dying or dead, and the reason for their death.
 //
 // See the package documentation for details.
 type Tomb struct {
 	m      sync.Mutex
+	alive  int
 	dying  chan struct{}
 	dead   chan struct{}
 	reason error
@@ -92,22 +105,22 @@ func (t *Tomb) init() {
 	t.m.Unlock()
 }
 
-// Dead returns the channel that can be used to wait
-// until t.Done has been called.
+// Dead returns the channel that can be used to wait until
+// all goroutines have finished running.
 func (t *Tomb) Dead() <-chan struct{} {
 	t.init()
 	return t.dead
 }
 
-// Dying returns the channel that can be used to wait
-// until t.Kill or t.Done has been called.
+// Dying returns the channel that can be used to wait until
+// t.Kill is called.
 func (t *Tomb) Dying() <-chan struct{} {
 	t.init()
 	return t.dying
 }
 
-// Wait blocks until the goroutine is in a dead state and returns the
-// reason for its death.
+// Wait blocks until all goroutines have finished running, and
+// then returns the reason for their death.
 func (t *Tomb) Wait() error {
 	t.init()
 	<-t.dead
@@ -117,14 +130,40 @@ func (t *Tomb) Wait() error {
 	return reason
 }
 
-// Done flags the goroutine as dead, and should be called a single time
-// right before the goroutine function or method returns.
-// If the goroutine was not already in a dying state before Done is
-// called, it will be flagged as dying and dead at once with no
-// error.
-func (t *Tomb) Done() {
-	t.Kill(nil)
-	close(t.dead)
+// Go runs the f function as a concurrent goroutine if
+// the tomb is not already in dead mode.
+//
+// If f returns a non-nil error, or f is the last goroutine alive
+// to return, t.Kill is called with its result as an argument.
+//
+// It is f's responsibility to monitor the tomb state and
+// return appropriately once it is put in dying mode.
+func (t *Tomb) Go(f ...func() error) {
+	t.init()
+	t.m.Lock()
+	defer t.m.Unlock()
+	select {
+	case <-t.dead:
+		return
+	default:
+	}
+	t.alive += len(f)
+	for _, fi := range f {
+		go t.run(fi)
+	}
+}
+
+func (t *Tomb) run(f func() error) {
+	err := f()
+	t.m.Lock()
+	defer t.m.Unlock()
+	t.alive--
+	if t.alive == 0 || err != nil {
+		t.kill(err)
+		if t.alive == 0 {
+			close(t.dead)
+		}
+	}
 }
 
 // Kill flags the goroutine as dying for the given reason.
@@ -138,22 +177,27 @@ func (t *Tomb) Kill(reason error) {
 	t.init()
 	t.m.Lock()
 	defer t.m.Unlock()
+	t.kill(reason)
+}
+
+func (t *Tomb) kill(reason error) {
+	if reason == ErrStillAlive {
+		panic("tomb: Kill with ErrStillAlive")
+	}
 	if reason == ErrDying {
 		if t.reason == ErrStillAlive {
 			panic("tomb: Kill with ErrDying while still alive")
 		}
 		return
 	}
-	if t.reason == nil || t.reason == ErrStillAlive {
+	if t.reason == ErrStillAlive {
 		t.reason = reason
-	}
-	// If the receive on t.dying succeeds, then
-	// it can only be because we have already closed it.
-	// If it blocks, then we know that it needs to be closed.
-	select {
-	case <-t.dying:
-	default:
 		close(t.dying)
+		return
+	}
+	if t.reason == nil {
+		t.reason = reason
+		return
 	}
 }
 
@@ -166,11 +210,16 @@ func (t *Tomb) Killf(f string, a ...interface{}) error {
 }
 
 // Err returns the reason for the goroutine death provided via Kill
-// or Killf, or ErrStillAlive when the goroutine is still alive.
+// or Killf, or ErrStillAlive if the goroutine is still alive.
 func (t *Tomb) Err() (reason error) {
 	t.init()
 	t.m.Lock()
 	reason = t.reason
 	t.m.Unlock()
 	return
+}
+
+// Alive returns whether the goroutine is still alive.
+func (t *Tomb) Alive() bool {
+	return t.Err() == ErrStillAlive
 }

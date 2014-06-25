@@ -2,36 +2,77 @@ package tomb_test
 
 import (
 	"errors"
-	"gopkg.in/tomb.v1"
+	"gopkg.in/tomb.v2"
 	"reflect"
 	"testing"
 )
 
+func nothing() error { return nil }
+
 func TestNewTomb(t *testing.T) {
 	tb := &tomb.Tomb{}
-	testState(t, tb, false, false, tomb.ErrStillAlive)
+	checkState(t, tb, false, false, tomb.ErrStillAlive)
+}
 
-	tb.Done()
-	testState(t, tb, true, true, nil)
+func TestGo(t *testing.T) {
+	tb := &tomb.Tomb{}
+	alive := make(chan bool)
+	tb.Go(func() error {
+		alive <- true
+		tb.Go(func() error {
+			alive <- true
+			<-tb.Dying()
+			return nil
+		})
+		<-tb.Dying()
+		return nil
+	})
+	<-alive
+	<-alive
+	checkState(t, tb, false, false, tomb.ErrStillAlive)
+	tb.Kill(nil)
+	tb.Wait()
+	checkState(t, tb, true, true, nil)
+}
+
+func TestGoErr(t *testing.T) {
+	first := errors.New("first error")
+	second := errors.New("first error")
+	tb := &tomb.Tomb{}
+	alive := make(chan bool)
+	tb.Go(func() error {
+		alive <- true
+		tb.Go(func() error {
+			alive <- true
+			return first
+		})
+		<-tb.Dying()
+		return second
+	})
+	<-alive
+	<-alive
+	tb.Wait()
+	checkState(t, tb, true, true, first)
 }
 
 func TestKill(t *testing.T) {
 	// a nil reason flags the goroutine as dying
 	tb := &tomb.Tomb{}
 	tb.Kill(nil)
-	testState(t, tb, true, false, nil)
+	checkState(t, tb, true, false, nil)
 
 	// a non-nil reason now will override Kill
 	err := errors.New("some error")
 	tb.Kill(err)
-	testState(t, tb, true, false, err)
+	checkState(t, tb, true, false, err)
 
 	// another non-nil reason won't replace the first one
 	tb.Kill(errors.New("ignore me"))
-	testState(t, tb, true, false, err)
+	checkState(t, tb, true, false, err)
 
-	tb.Done()
-	testState(t, tb, true, true, err)
+	tb.Go(nothing)
+	tb.Wait()
+	checkState(t, tb, true, true, err)
 }
 
 func TestKillf(t *testing.T) {
@@ -41,14 +82,15 @@ func TestKillf(t *testing.T) {
 	if s := err.Error(); s != "BOOM" {
 		t.Fatalf(`Killf("BO%s", "OM"): want "BOOM", got %q`, s)
 	}
-	testState(t, tb, true, false, err)
+	checkState(t, tb, true, false, err)
 
 	// another non-nil reason won't replace the first one
 	tb.Killf("ignore me")
-	testState(t, tb, true, false, err)
+	checkState(t, tb, true, false, err)
 
-	tb.Done()
-	testState(t, tb, true, true, err)
+	tb.Go(nothing)
+	tb.Wait()
+	checkState(t, tb, true, true, err)
 }
 
 func TestErrDying(t *testing.T) {
@@ -56,13 +98,13 @@ func TestErrDying(t *testing.T) {
 	tb := &tomb.Tomb{}
 	tb.Kill(nil)
 	tb.Kill(tomb.ErrDying)
-	testState(t, tb, true, false, nil)
+	checkState(t, tb, true, false, nil)
 
 	// ErrDying being used properly, after an errorful death.
 	err := errors.New("some error")
 	tb.Kill(err)
 	tb.Kill(tomb.ErrDying)
-	testState(t, tb, true, false, err)
+	checkState(t, tb, true, false, err)
 
 	// ErrDying being used badly, with an alive tomb.
 	tb = &tomb.Tomb{}
@@ -71,12 +113,12 @@ func TestErrDying(t *testing.T) {
 		if err != "tomb: Kill with ErrDying while still alive" {
 			t.Fatalf("Wrong panic on Kill(ErrDying): %v", err)
 		}
-		testState(t, tb, false, false, tomb.ErrStillAlive)
+		checkState(t, tb, false, false, tomb.ErrStillAlive)
 	}()
 	tb.Kill(tomb.ErrDying)
 }
 
-func testState(t *testing.T, tb *tomb.Tomb, wantDying, wantDead bool, wantErr error) {
+func checkState(t *testing.T, tb *tomb.Tomb, wantDying, wantDead bool, wantErr error) {
 	select {
 	case <-tb.Dying():
 		if !wantDying {
