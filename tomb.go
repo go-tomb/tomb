@@ -31,10 +31,10 @@
 // A Tomb value tracks the lifecycle of one or more goroutines as alive,
 // dying or dead, and the reason for their death.
 //
-// The zero value of a Tomb is ready to handle the creation of one
-// or more tracked goroutines via its Go method, and these goroutines
-// may call the Go method again to create additional tracked goroutines
-// at any point in their execution.
+// The zero value of a Tomb is ready to handle the creation of a tracked
+// goroutine via its Go method, and then any tracked goroutine may call
+// the Go method again to create additional tracked goroutines at
+// any point.
 // 
 // If any of the tracked goroutines returns a non-nil error, or the
 // Kill or Killf method is called by any goroutine in the system (tracked
@@ -47,19 +47,17 @@
 // to the tomb via a result or an explicit Kill or Killf method call,
 // or nil if there were no errors.
 //
+// It is okay to create further goroutines via the Go method while
+// the tomb is in a dying state. The final dead state is only reached
+// once all tracked goroutines terminate, at which point calling
+// the Go method again will cause a runtime panic.
+//
 // Tracked functions and methods that are still running while the tomb
-// is in dying mode may choose to return ErrDying as their error value.
+// is in dying state may choose to return ErrDying as their error value.
 // This preserves the well established non-nil error convention, but is
 // understood by the tomb as a clean termination. The Err and Wait
 // methods will still return nil if all observed errors were either
 // nil or ErrDying.
-//
-// All tomb methods are concurrency-safe. The main non-obvious race
-// to be aware about is that calling the Go method twice on a new
-// tomb value may lead the second goroutine to never run if the
-// first one returns too early and puts the tomb into dead mode.
-// If unintended, avoiding this behavior by providing both goroutine
-// functions to the same Go method call.
 //
 // For background and a detailed example, see the following blog post:
 //
@@ -130,27 +128,33 @@ func (t *Tomb) Wait() error {
 	return reason
 }
 
-// Go runs the f function as a concurrent goroutine if
-// the tomb is not already in dead mode.
+// Go runs f in a new goroutine and tracks its termination.
 //
-// If f returns a non-nil error, or f is the last goroutine alive
-// to return, t.Kill is called with its result as an argument.
+// If f returns a non-nil error, t.Kill is called with that
+// error as the death reason parameter.
 //
-// It is f's responsibility to monitor the tomb state and
-// return appropriately once it is put in dying mode.
-func (t *Tomb) Go(f ...func() error) {
+// It is f's responsibility to monitor the tomb and return
+// appropriately once it is in a dying state.
+//
+// It is safe for the f function to call the Go method again
+// to create additional tracked goroutines. Once all tracked
+// goroutines return, the Dead channel is closed and the
+// Wait method unblocks and returns the death reason.
+//
+// Calling the Go method after all tracked goroutines return
+// causes a runtime panic. For that reason, calling the Go
+// method a second time out of a tracked goroutine is unsafe.
+func (t *Tomb) Go(f func() error) {
 	t.init()
 	t.m.Lock()
 	defer t.m.Unlock()
 	select {
 	case <-t.dead:
-		return
+		panic("tomb.Go called after all goroutines terminated")
 	default:
 	}
-	t.alive += len(f)
-	for _, fi := range f {
-		go t.run(fi)
-	}
+	t.alive++
+	go t.run(f)
 }
 
 func (t *Tomb) run(f func() error) {
@@ -166,13 +170,15 @@ func (t *Tomb) run(f func() error) {
 	}
 }
 
-// Kill flags the goroutine as dying for the given reason.
-// Kill may be called multiple times, but only the first
-// non-nil error is recorded as the reason for termination.
+// Kill puts the tomb in a dying state for the given reason,
+// closes the Dying channel, and sets Alive to false.
+//
+// Althoguh Kill may be called multiple times, only the first
+// non-nil error is recorded as the death reason.
 //
 // If reason is ErrDying, the previous reason isn't replaced
-// even if it is nil. It's a runtime error to call Kill with
-// ErrDying if t is not in a dying state.
+// even if nil. It's a runtime error to call Kill with ErrDying
+// if t is not in a dying state.
 func (t *Tomb) Kill(reason error) {
 	t.init()
 	t.m.Lock()
@@ -201,16 +207,16 @@ func (t *Tomb) kill(reason error) {
 	}
 }
 
-// Killf works like Kill, but builds the reason providing the received
-// arguments to fmt.Errorf. The generated error is also returned.
+// Killf calls the Kill method with an error built providing the received
+// parameters to fmt.Errorf. The generated error is also returned.
 func (t *Tomb) Killf(f string, a ...interface{}) error {
 	err := fmt.Errorf(f, a...)
 	t.Kill(err)
 	return err
 }
 
-// Err returns the reason for the goroutine death provided via Kill
-// or Killf, or ErrStillAlive if the goroutine is still alive.
+// Err returns the death reason, or ErrStillAlive if the tomb
+// is not in a dying or dead state.
 func (t *Tomb) Err() (reason error) {
 	t.init()
 	t.m.Lock()
@@ -219,7 +225,7 @@ func (t *Tomb) Err() (reason error) {
 	return
 }
 
-// Alive returns whether the goroutine is still alive.
+// Alive returns true if the tomb is not in a dying or dead state.
 func (t *Tomb) Alive() bool {
 	return t.Err() == ErrStillAlive
 }

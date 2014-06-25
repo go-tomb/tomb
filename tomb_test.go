@@ -55,6 +55,21 @@ func TestGoErr(t *testing.T) {
 	checkState(t, tb, true, true, first)
 }
 
+func TestGoPanic(t *testing.T) {
+	// ErrDying being used properly, after a clean death.
+	tb := &tomb.Tomb{}
+	tb.Go(nothing)
+	tb.Wait()
+	defer func() {
+		err := recover()
+		if err != "tomb.Go called after all goroutines terminated" {
+			t.Fatalf("Wrong panic on post-death tomb.Go call: %v", err)
+		}
+		checkState(t, tb, true, true, nil)
+	}()
+	tb.Go(nothing)
+}
+
 func TestKill(t *testing.T) {
 	// a nil reason flags the goroutine as dying
 	tb := &tomb.Tomb{}
@@ -116,6 +131,18 @@ func TestErrDying(t *testing.T) {
 		checkState(t, tb, false, false, tomb.ErrStillAlive)
 	}()
 	tb.Kill(tomb.ErrDying)
+}
+
+func TestKillErrStillAlivePanic(t *testing.T) {
+	tb := &tomb.Tomb{}
+	defer func() {
+		err := recover()
+		if err != "tomb: Kill with ErrStillAlive" {
+			t.Fatalf("Wrong panic on Kill(ErrStillAlive): %v", err)
+		}
+		checkState(t, tb, false, false, tomb.ErrStillAlive)
+	}()
+	tb.Kill(tomb.ErrStillAlive)
 }
 
 func checkState(t *testing.T, tb *tomb.Tomb, wantDying, wantDead bool, wantErr error) {
