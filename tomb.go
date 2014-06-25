@@ -28,9 +28,6 @@
 
 // The tomb package handles clean goroutine tracking and termination.
 //
-// A Tomb value tracks the lifecycle of one or more goroutines as alive,
-// dying or dead, and the reason for their death.
-//
 // The zero value of a Tomb is ready to handle the creation of a tracked
 // goroutine via its Go method, and then any tracked goroutine may call
 // the Go method again to create additional tracked goroutines at
