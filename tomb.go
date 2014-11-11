@@ -66,6 +66,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 )
 
 // A Tomb tracks the lifecycle of one or more goroutines as alive,
@@ -74,6 +75,7 @@ import (
 // See the package documentation for details.
 type Tomb struct {
 	m      sync.Mutex
+	ready  int32
 	alive  int
 	dying  chan struct{}
 	dead   chan struct{}
@@ -86,11 +88,15 @@ var (
 )
 
 func (t *Tomb) init() {
+	if atomic.LoadInt32(&t.ready) == 1 {
+		return
+	}
 	t.m.Lock()
-	if t.dead == nil {
+	if atomic.LoadInt32(&t.ready) == 0 {
 		t.dead = make(chan struct{})
 		t.dying = make(chan struct{})
 		t.reason = ErrStillAlive
+		atomic.StoreInt32(&t.ready, 1)
 	}
 	t.m.Unlock()
 }
