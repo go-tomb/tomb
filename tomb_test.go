@@ -11,7 +11,7 @@ func nothing() error { return nil }
 
 func TestNewTomb(t *testing.T) {
 	tb := &tomb.Tomb{}
-	checkState(t, tb, false, false, tomb.ErrStillAlive)
+	checkState(t, tb, false, false, false, tomb.ErrStillAlive)
 }
 
 func TestGo(t *testing.T) {
@@ -29,10 +29,10 @@ func TestGo(t *testing.T) {
 	})
 	<-alive
 	<-alive
-	checkState(t, tb, false, false, tomb.ErrStillAlive)
+	checkState(t, tb, false, false, true, tomb.ErrStillAlive)
 	tb.Kill(nil)
 	tb.Wait()
-	checkState(t, tb, true, true, nil)
+	checkState(t, tb, true, true, true, nil)
 }
 
 func TestGoErr(t *testing.T) {
@@ -52,7 +52,7 @@ func TestGoErr(t *testing.T) {
 	<-alive
 	<-alive
 	tb.Wait()
-	checkState(t, tb, true, true, first)
+	checkState(t, tb, true, true, true, first)
 }
 
 func TestGoPanic(t *testing.T) {
@@ -65,7 +65,7 @@ func TestGoPanic(t *testing.T) {
 		if err != "tomb.Go called after all goroutines terminated" {
 			t.Fatalf("Wrong panic on post-death tomb.Go call: %v", err)
 		}
-		checkState(t, tb, true, true, nil)
+		checkState(t, tb, true, true, true, nil)
 	}()
 	tb.Go(nothing)
 }
@@ -74,20 +74,20 @@ func TestKill(t *testing.T) {
 	// a nil reason flags the goroutine as dying
 	tb := &tomb.Tomb{}
 	tb.Kill(nil)
-	checkState(t, tb, true, false, nil)
+	checkState(t, tb, true, false, false, nil)
 
 	// a non-nil reason now will override Kill
 	err := errors.New("some error")
 	tb.Kill(err)
-	checkState(t, tb, true, false, err)
+	checkState(t, tb, true, false, false, err)
 
 	// another non-nil reason won't replace the first one
 	tb.Kill(errors.New("ignore me"))
-	checkState(t, tb, true, false, err)
+	checkState(t, tb, true, false, false, err)
 
 	tb.Go(nothing)
 	tb.Wait()
-	checkState(t, tb, true, true, err)
+	checkState(t, tb, true, true, true, err)
 }
 
 func TestKillf(t *testing.T) {
@@ -97,15 +97,15 @@ func TestKillf(t *testing.T) {
 	if s := err.Error(); s != "BOOM" {
 		t.Fatalf(`Killf("BO%s", "OM"): want "BOOM", got %q`, s)
 	}
-	checkState(t, tb, true, false, err)
+	checkState(t, tb, true, false, false, err)
 
 	// another non-nil reason won't replace the first one
 	tb.Killf("ignore me")
-	checkState(t, tb, true, false, err)
+	checkState(t, tb, true, false, false, err)
 
 	tb.Go(nothing)
 	tb.Wait()
-	checkState(t, tb, true, true, err)
+	checkState(t, tb, true, true, true, err)
 }
 
 func TestErrDying(t *testing.T) {
@@ -113,13 +113,13 @@ func TestErrDying(t *testing.T) {
 	tb := &tomb.Tomb{}
 	tb.Kill(nil)
 	tb.Kill(tomb.ErrDying)
-	checkState(t, tb, true, false, nil)
+	checkState(t, tb, true, false, false, nil)
 
 	// ErrDying being used properly, after an errorful death.
 	err := errors.New("some error")
 	tb.Kill(err)
 	tb.Kill(tomb.ErrDying)
-	checkState(t, tb, true, false, err)
+	checkState(t, tb, true, false, false, err)
 
 	// ErrDying being used badly, with an alive tomb.
 	tb = &tomb.Tomb{}
@@ -128,7 +128,7 @@ func TestErrDying(t *testing.T) {
 		if err != "tomb: Kill with ErrDying while still alive" {
 			t.Fatalf("Wrong panic on Kill(ErrDying): %v", err)
 		}
-		checkState(t, tb, false, false, tomb.ErrStillAlive)
+		checkState(t, tb, false, false, false, tomb.ErrStillAlive)
 	}()
 	tb.Kill(tomb.ErrDying)
 }
@@ -140,12 +140,12 @@ func TestKillErrStillAlivePanic(t *testing.T) {
 		if err != "tomb: Kill with ErrStillAlive" {
 			t.Fatalf("Wrong panic on Kill(ErrStillAlive): %v", err)
 		}
-		checkState(t, tb, false, false, tomb.ErrStillAlive)
+		checkState(t, tb, false, false, false, tomb.ErrStillAlive)
 	}()
 	tb.Kill(tomb.ErrStillAlive)
 }
 
-func checkState(t *testing.T, tb *tomb.Tomb, wantDying, wantDead bool, wantErr error) {
+func checkState(t *testing.T, tb *tomb.Tomb, wantDying, wantDead, wantHasSpawned bool, wantErr error) {
 	select {
 	case <-tb.Dying():
 		if !wantDying {
@@ -168,6 +168,15 @@ func checkState(t *testing.T, tb *tomb.Tomb, wantDying, wantDead bool, wantErr e
 			t.Error("<-Dead: should not block")
 		}
 	}
+  if tb.HasSpawned() {
+    if !wantHasSpawned {
+      t.Error("HasSpawned should be false")
+    }
+  } else {
+    if wantHasSpawned {
+      t.Error("HasSpawned should be true")
+    }
+  }
 	if err := tb.Err(); err != wantErr {
 		t.Errorf("Err: want %#v, got %#v", wantErr, err)
 	}
