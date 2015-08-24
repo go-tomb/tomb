@@ -2,9 +2,10 @@ package tomb_test
 
 import (
 	"errors"
-	"gopkg.in/tomb.v1"
 	"reflect"
 	"testing"
+
+	"gopkg.in/tomb.v1"
 )
 
 func TestNewTomb(t *testing.T) {
@@ -39,7 +40,7 @@ func TestKillf(t *testing.T) {
 
 	err := tb.Killf("BO%s", "OM")
 	if s := err.Error(); s != "BOOM" {
-		t.Fatalf(`Killf("BO%s", "OM"): want "BOOM", got %q`, s)
+		t.Fatalf(`Killf("BO%%s", "OM"): want "BOOM", got %q`, s)
 	}
 	testState(t, tb, true, false, err)
 
