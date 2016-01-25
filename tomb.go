@@ -51,7 +51,7 @@
 //
 // Tracked functions and methods that are still running while the tomb
 // is in dying state may choose to return ErrDying as their error value.
-// This preserves the well established non-nil error convention, but is
+// This preserves the well-established non-nil error convention, but is
 // understood by the tomb as a clean termination. The Err and Wait
 // methods will still return nil if all observed errors were either
 // nil or ErrDying.
@@ -165,12 +165,12 @@ func (t *Tomb) run(f func() error) {
 // Kill puts the tomb in a dying state for the given reason,
 // closes the Dying channel, and sets Alive to false.
 //
-// Althoguh Kill may be called multiple times, only the first
+// Although Kill may be called multiple times, only the first
 // non-nil error is recorded as the death reason.
 //
 // If reason is ErrDying, the previous reason isn't replaced
 // even if nil. It's a runtime error to call Kill with ErrDying
-// if t is not in a dying state.
+// if it is not in a dying state.
 func (t *Tomb) Kill(reason error) {
 	t.init()
 	t.m.Lock()
