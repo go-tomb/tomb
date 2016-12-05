@@ -96,14 +96,12 @@ var (
 	ErrDying      = errors.New("tomb: dying")
 )
 
-func (t *Tomb) initimpl() {
-	t.dead = make(chan struct{})
-	t.dying = make(chan struct{})
-	t.reason = ErrStillAlive
-}
-
 func (t *Tomb) init() {
-	t.initonce.Do(t.initimpl)
+	t.initonce.Do(func() {
+		t.dead = make(chan struct{})
+		t.dying = make(chan struct{})
+		t.reason = ErrStillAlive
+	})
 }
 
 // Dead returns the channel that can be used to wait until
