@@ -42,10 +42,8 @@ func (t *Tomb) Context(parent context.Context) context.Context {
 	if parent == nil {
 		if t.parent == nil {
 			t.parent = context.Background()
-			child, cancel := context.WithCancel(t.parent.(context.Context))
-			t.addChild(t.parent.(context.Context), child, cancel)
 		}
-		return t.child[t.parent].context.(context.Context)
+		parent = t.parent.(context.Context)
 	}
 
 	if child, ok := t.child[parent]; ok {
