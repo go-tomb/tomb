@@ -235,3 +235,11 @@ func (t *Tomb) Err() (reason error) {
 func (t *Tomb) Alive() bool {
 	return t.Err() == ErrStillAlive
 }
+
+// Get alive members
+func (t *Tomb) Alives() int {
+  t.init()
+  t.m.Lock()
+  defer t.m.Unlock()
+  return t.alive
+}
