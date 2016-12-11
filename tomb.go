@@ -73,11 +73,12 @@ import (
 //
 // See the package documentation for details.
 type Tomb struct {
-	m      sync.Mutex
-	alive  int
-	dying  chan struct{}
-	dead   chan struct{}
-	reason error
+	m        sync.Mutex
+	alive    int
+	dying    chan struct{}
+	dead     chan struct{}
+	reason   error
+	initonce sync.Once
 
 	// context.Context is available in Go 1.7+.
 	parent interface{}
@@ -96,13 +97,11 @@ var (
 )
 
 func (t *Tomb) init() {
-	t.m.Lock()
-	if t.dead == nil {
+	t.initonce.Do(func() {
 		t.dead = make(chan struct{})
 		t.dying = make(chan struct{})
 		t.reason = ErrStillAlive
-	}
-	t.m.Unlock()
+	})
 }
 
 // Dead returns the channel that can be used to wait until
