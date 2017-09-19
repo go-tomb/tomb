@@ -74,6 +74,7 @@ import (
 // See the package documentation for details.
 type Tomb struct {
 	m      sync.Mutex
+	once   sync.Once
 	alive  int
 	dying  chan struct{}
 	dead   chan struct{}
@@ -99,6 +100,7 @@ func (t *Tomb) init() {
 	t.m.Lock()
 	if t.dead == nil {
 		t.dead = make(chan struct{})
+		close(t.dead)
 		t.dying = make(chan struct{})
 		t.reason = ErrStillAlive
 	}
@@ -148,6 +150,9 @@ func (t *Tomb) Wait() error {
 // method a second time out of a tracked goroutine is unsafe.
 func (t *Tomb) Go(f func() error) {
 	t.init()
+	t.once.Do(func() {
+		t.dead = make(chan struct{})
+	})
 	t.m.Lock()
 	defer t.m.Unlock()
 	select {
