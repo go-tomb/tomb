@@ -145,6 +145,13 @@ func TestKillErrStillAlivePanic(t *testing.T) {
 	tb.Kill(tomb.ErrStillAlive)
 }
 
+func TestWaitNoGoroutine(t *testing.T) {
+	tb := &tomb.Tomb{}
+	tb.Kill(nil)
+	tb.Wait()
+	checkState(t, tb, true, true, nil)
+}
+
 func checkState(t *testing.T, tb *tomb.Tomb, wantDying, wantDead bool, wantErr error) {
 	select {
 	case <-tb.Dying():
