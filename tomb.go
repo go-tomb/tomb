@@ -31,7 +31,7 @@
 // The zero value of a Tomb is ready to handle the creation of a tracked
 // goroutine via its Go method, and then any tracked goroutine may call
 // the Go method again to create additional tracked goroutines at
-// any point.
+// any point. A Tomb must not be copied after first use.
 //
 // If any of the tracked goroutines returns a non-nil error, or the
 // Kill or Killf method is called by any goroutine in the system (tracked
@@ -68,7 +68,7 @@ import (
 	"sync"
 )
 
-// A Tomb tracks the lifecycle of one or more goroutines as alive,
+// A Tomb tracks the life cycle of one or more goroutines as alive,
 // dying or dead, and the reason for their death.
 //
 // See the package documentation for details.
@@ -175,7 +175,7 @@ func (t *Tomb) run(f func() error) {
 // Kill puts the tomb in a dying state for the given reason,
 // closes the Dying channel, and sets Alive to false.
 //
-// Althoguh Kill may be called multiple times, only the first
+// Although Kill may be called multiple times, only the first
 // non-nil error is recorded as the death reason.
 //
 // If reason is ErrDying, the previous reason isn't replaced
