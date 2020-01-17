@@ -39,7 +39,7 @@ func TestKillf(t *testing.T) {
 
 	err := tb.Killf("BO%s", "OM")
 	if s := err.Error(); s != "BOOM" {
-		t.Fatalf(`Killf("BO%s", "OM"): want "BOOM", got %q`, s)
+		t.Fatalf(`Killf("BO%%s", "OM"): want "BOOM", got %q`, s)
 	}
 	testState(t, tb, true, false, err)
 
