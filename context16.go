@@ -13,6 +13,9 @@ import (
 func WithContext(parent context.Context) (*Tomb, context.Context) {
 	var t Tomb
 	t.init()
+	t.parent = parent
+	child, cancel := context.WithCancel(parent)
+	t.addChild(parent, child, cancel)
 	if parent.Done() != nil {
 		go func() {
 			select {
@@ -22,9 +25,6 @@ func WithContext(parent context.Context) (*Tomb, context.Context) {
 			}
 		}()
 	}
-	t.parent = parent
-	child, cancel := context.WithCancel(parent)
-	t.addChild(parent, child, cancel)
 	return &t, child
 }
 
